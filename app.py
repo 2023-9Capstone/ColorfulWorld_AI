@@ -1,21 +1,18 @@
 from flask import Flask, request, jsonify
-from flask_restx import Api, Resource
+from flask_restx import Api, Resource #flask restful
+from resources.post_image import api as post_namespace
+from resources.get_image import api as get_namespace
 
 app = Flask(__name__)
-api = Api(app)
+api = Api(
+    app,
+    version = '0.1',
+    title = "Colorful World deep learing Server",
+    terms_url = "/"
+    )
 
-#get 송신
-@api.route('/get/<string:name>') 
-class Send(Resource):
-    def get(self, name):
-        return {"message" : "Welcome, %s!" % name}
-
-#post 수신
-@api.route('/post_image') 
-class Recive(Resource):
-    def post(self):
-        param = request.get_json()
-        return jsonify(param)
+api.add_namespace(post_namespace, path="/post")
+api.add_namespace(get_namespace, path="/get")
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host='0.0.0.0', port=5000, debug=True)
