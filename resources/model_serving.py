@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_restx import Resource, Api, Namespace, fields
 from data import colorize_image as CI
 from PIL import Image
 import numpy as np
 from io import BytesIO
 from tempfile import NamedTemporaryFile
+import os
 
 api = Namespace(
     name="model serving",
@@ -22,8 +23,10 @@ class Colorize(Resource):
     
     def post(self):
         image = request.files['image']
-        idx =  request.form['index']
-        return  colorized()
+        idx =  request.form['idx']
+        colorized()
+        return send_file('image.png', mimetype='image/png')
+    
 
 #Adding user inputs 
 # lab 컬러러 중중 ab 사용
@@ -38,19 +41,16 @@ def put_point(input_ab,mask,loc,p,val):
     return (input_ab,mask)
     
 def colorized():
+        
         # Load image from the request
         img_file = request.files['image']
-
+        #tt = img_file
+        #tt.save('test.png')
         with NamedTemporaryFile(delete=False) as tmp:
             img_file.save(tmp.name)
             img = Image.open(tmp.name)
         # 이미지 처리 코드 작성
         file_path = tmp.name # 파일 경로 저장
-
-        #img_file = img_file.read()
-        #img = Image.open(BytesIO(img_file))
-        #img = np.array(Image.open(BytesIO(img_file)))
-        #img = img_file.convert('RGBA')
 
         # Convert to grayscale
         colorModel.load_image(file_path)
@@ -60,8 +60,9 @@ def colorized():
         mask = np.zeros((1,256,256))
 
         # Colorize image with hints
-        # add a blue point in the middle of the imag
+        # add a blue point in the middle of the image
         (input_ab,mask) = put_point(input_ab,mask,[150,160],3,[60,61])
+        (input_ab,mask) = put_point(input_ab,mask,[50,125],3,[60,61])
 
         # call forward
         img_out = colorModel.net_forward(input_ab,mask)
@@ -70,8 +71,9 @@ def colorized():
         mask_fullres = colorModel.get_img_mask_fullres() # get input mask in full res
         img_in_fullres = colorModel.get_input_img_fullres() # get input image in full res
         img_out_fullres = colorModel.get_img_fullres() # get image at full resolution
+        
 
         # Return colorized image as response -> 수정에 따라 사용할 예정
-        response = jsonify({'result': img_out_fullres})
-        return response
-    
+        result = Image.fromarray(img_out_fullres)
+        result.save('image.png', "PNG")
+        os.remove(file_path) # 임시 파일 삭제
