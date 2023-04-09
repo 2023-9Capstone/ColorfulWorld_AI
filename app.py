@@ -6,8 +6,7 @@ from resources.get_image import api as get_namespace
 from resources.model_serving import api as model_namespace
 
 app = Flask(__name__)
-cors = CORS(app, resources={r"/*": {"origins": "http://172.16.65.77"}})
-
+CORS(app)
 api = Api(
     app,
     version = '0.1',
