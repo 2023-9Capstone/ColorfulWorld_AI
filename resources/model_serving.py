@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file,render_template
 from flask_restx import Resource, Api, Namespace, fields
 from data import colorize_image as CI
 from PIL import Image
@@ -6,9 +6,10 @@ import numpy as np
 from io import BytesIO
 from tempfile import NamedTemporaryFile
 import os
+import base64
 
 api = Namespace(
-    name="model serving",
+    name="model_serving",
     description="모델을 가져오는 API.",
 )
 
@@ -20,12 +21,15 @@ colorModel.prep_net(None,'models/colorization_model.pth', False)
 # Define a route for colorization
 @api.route('')
 class Colorize(Resource):
-    
     def post(self):
         image = request.files['image']
         idx =  request.form['idx']
-        colorized()
-        return send_file('image.png', mimetype='image/png')
+        result = colorized(image)
+        return send_file(result, mimetype='image/jpeg')
+        #encoded_result = base64.b64encode(result.read())
+        #return render_template('templates/sending_form_data.html', image=result)
+        #return jsonify({'image': encoded_result.decode('utf-8')})
+        #return send_file('image.png', mimetype='image/png')
     
 
 #Adding user inputs 
@@ -40,10 +44,8 @@ def put_point(input_ab,mask,loc,p,val):
     mask[:,loc[0]-p:loc[0]+p+1,loc[1]-p:loc[1]+p+1] = 1
     return (input_ab,mask)
     
-def colorized():
+def colorized(img_file):
         
-        # Load image from the request
-        img_file = request.files['image']
         #tt = img_file
         #tt.save('test.png')
         with NamedTemporaryFile(delete=False) as tmp:
@@ -75,5 +77,7 @@ def colorized():
 
         # Return colorized image as response -> 수정에 따라 사용할 예정
         result = Image.fromarray(img_out_fullres)
-        result.save('image.png', "PNG")
+        img_path = 'image.png'
+        result.save(img_path, "PNG")
         os.remove(file_path) # 임시 파일 삭제
+        return img_path

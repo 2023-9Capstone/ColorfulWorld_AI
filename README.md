@@ -3,7 +3,7 @@
 
 Flask Server run
 ```
-$ python app.py
+$ python app.py flask run --port 5002
 ```
 or
 ```
