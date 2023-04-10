@@ -4,6 +4,7 @@ from flask_cors import CORS
 from resources.post_image import api as post_namespace
 from resources.get_image import api as get_namespace
 from resources.model_serving import api as model_namespace
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +15,8 @@ api = Api(
     terms_url = "/"
     )
 
+app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, 'images')
+
 @app.route('/')
 def index():
     app.logger.info('Web connection established.')
@@ -21,7 +24,7 @@ def index():
 
 api.add_namespace(post_namespace, path="/post")
 api.add_namespace(get_namespace, path="/get")
-api.add_namespace(model_namespace, path="/colorization")
+api.add_namespace(model_namespace, path="/colorization",)
 
 
 if __name__ == "__main__":

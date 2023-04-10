@@ -1,12 +1,13 @@
-from flask import Flask, request, jsonify, send_file,render_template
-from flask_restx import Resource, Api, Namespace, fields
+from flask import  request, jsonify, url_for
+from flask_restx import Resource, Namespace
 from data import colorize_image as CI
 from PIL import Image
 import numpy as np
-from io import BytesIO
 from tempfile import NamedTemporaryFile
 import os
 import base64
+
+from flask import current_app as app
 
 api = Namespace(
     name="model_serving",
@@ -19,17 +20,16 @@ colorModel.prep_net(None,'models/colorization_model.pth', False)
 
 
 # Define a route for colorization
-@api.route('')
+@api.route('', endpoint='uploaded_file')
 class Colorize(Resource):
     def post(self):
         image = request.files['image']
+        
         idx =  request.form['idx']
         result = colorized(image)
-        return send_file(result, mimetype='image/jpeg')
-        #encoded_result = base64.b64encode(result.read())
-        #return render_template('templates/sending_form_data.html', image=result)
-        #return jsonify({'image': encoded_result.decode('utf-8')})
-        #return send_file('image.png', mimetype='image/png')
+
+        return jsonify({'url': result})
+       
     
 
 #Adding user inputs 
@@ -45,9 +45,7 @@ def put_point(input_ab,mask,loc,p,val):
     return (input_ab,mask)
     
 def colorized(img_file):
-        
-        #tt = img_file
-        #tt.save('test.png')
+      
         with NamedTemporaryFile(delete=False) as tmp:
             img_file.save(tmp.name)
             img = Image.open(tmp.name)
@@ -78,6 +76,9 @@ def colorized(img_file):
         # Return colorized image as response -> 수정에 따라 사용할 예정
         result = Image.fromarray(img_out_fullres)
         img_path = 'image.png'
-        result.save(img_path, "PNG")
+        filename = img_path
+        result.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        image_url = url_for('static', filename='images/' + filename)
+
         os.remove(file_path) # 임시 파일 삭제
-        return img_path
+        return image_url
