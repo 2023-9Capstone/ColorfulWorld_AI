@@ -11,6 +11,6 @@ api = Namespace(
 class Recive(Resource):
     def post(self):
         image = request.files['image']
-        idx =  request.form['idx']
+        idx =  request.form['Intensity']
         #param = request.get_json()
         return {"filename" : image.filename, "index" : idx}
