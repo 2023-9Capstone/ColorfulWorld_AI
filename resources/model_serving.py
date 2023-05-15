@@ -8,6 +8,8 @@ import cv2
 from skimage import color
 import os
 from flask import current_app as app
+import pymysql
+import logging
 
 api = Namespace(
     name="model_serving",
@@ -29,7 +31,6 @@ class Colorize(Resource):
         result = colorized(image)
 
         return jsonify({'url': result})
-       
     
 def colorized(img_file):
 
@@ -64,24 +65,87 @@ def colorized(img_file):
         flags = cv2.KMEANS_RANDOM_CENTERS
         rep_colors = []
         position = []
+        compare_colors = []
         for cell_idx, cell in enumerate(cells):
             pixel_colors = cell.reshape((-1, 3)).astype(np.float32)
             _, labels, centers = cv2.kmeans(pixel_colors, num_colors, None, criteria, 10, flags)
-            
-            rep_colors.append([centers[0][1],centers[0][2]])
 
+            compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
+            rep_colors.append([centers[0][0],centers[0][1],centers[0][2]])
             cell_row = cell_idx // (w // cell_w)  # 셀의 행 인덱스 계산
             cell_col = cell_idx % (w // cell_w)  # 셀의 열 인덱스 계산
             cell_position = (int(cell_row * cell_h ) , int(cell_col * cell_w)) # 셀의 위치 정보 저장
             position.append(cell_position)
+        compare = list(set(map(tuple, compare_colors)))   
+
+        #로그 출력
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        #쿼리 연결    
+        connection = pymysql.connect(
+            host=app.config['MYSQL_HOST'],
+            port=app.config['MYSQL_PORT'],
+            user=app.config['MYSQL_USER'],
+            password=app.config['MYSQL_PASSWORD'],
+            db=app.config['MYSQL_DB']
+        )
         
+        # 쿼리 실행
+        cursor = connection.cursor()
+
+        exist_db = []
+        for com in compare:
+            L, a, b = com[0], com[1], com[2]
+            sql_com = 'SELECT Type FROM COLORBLIND.protanopin WHERE L = ' + str(L) + ' and a = '+ str(a) + ' and b =' + str(b)
+            cursor.execute(sql_com)
+            result = cursor.fetchall()
+            if len(result) > 0:
+                #이때 그 혼동색 라인에 있는 색을 찾는게 좋을듯...!!! 그 함수를 만들어 보자
+                exist_db.append(result[0][0])
+            else:
+                print("No rows found.")
+        
+        #혼동선 라인
+        exist_db = list(set(exist_db))
+        # print(exist_db)
+        for db in exist_db:
+            color_line = []
+            sql_com = 'SELECT L,a,b FROM COLORBLIND.protanopin WHERE Type = \'' + db + '\''
+            cursor.execute(sql_com)
+            result = cursor.fetchall()
+            if len(result) > 2:
+                for r in result:
+                    color_line.append(r)
+            cnt = []
+            line = []
+            for col in color_line:
+                count = 0
+                for com, rep in zip(compare_colors, rep_colors):
+                    if col[0] == com[0] and col[1]==com[1] and col[2]==com[2]:
+                        count += 1
+                if count > 0 :
+                    cnt.append(count)
+                    line.append([col[0], col[1], col[2]])
+            print(line)
+            print(cnt)
+            if len(cnt)>=2:
+                idx_max = max(cnt)
+                for col_li, c in zip(line,cnt) :
+                    if c !=idx_max:
+                        for com, rep in zip(compare_colors, rep_colors):
+                            if col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2]:
+                                rep[1] += 13 
+                                rep[2] -= 30
+            
+       
+
         # initialize with no user inputs
         input_ab = np.zeros((2,256,256))
         mask = np.zeros((1,256,256))
 
         # Colorize image with hints
         for col, pos in zip(rep_colors, position):
-            (input_ab,mask) = put_point(input_ab,mask,pos,1,col)
+            (input_ab,mask) = put_point(input_ab,mask,pos,1,col[1:])
 
         # call forward
         img_out = colorModel.net_forward(input_ab,mask)
@@ -112,3 +176,4 @@ def put_point(input_ab,mask,loc,p,val):
     input_ab[:,loc[0]-p:loc[0]+p+1,loc[1]-p:loc[1]+p+1] = np.array(val)[:,np.newaxis,np.newaxis]
     mask[:,loc[0]-p:loc[0]+p+1,loc[1]-p:loc[1]+p+1] = 1
     return (input_ab,mask)
+
