@@ -10,6 +10,7 @@ import os
 from flask import current_app as app
 import pymysql
 import logging
+import shutil
 
 api = Namespace(
     name="model_serving",
@@ -28,12 +29,12 @@ class Colorize(Resource):
         image = request.files['image']
         idx =  request.form['Intensity'] #인덱스 
 
-        result = colorized(image)
+        origin , result = colorized(image)
 
-        return jsonify({'url': result})
+        return jsonify({'url': result, 'origin_url' : '/'+origin})
     
-def colorized(img_file):
-
+def colorized(img_file, ):
+       
         #임시 파일 저장
         with NamedTemporaryFile(delete=False) as tmp:
             img_file.save(tmp.name)
@@ -45,7 +46,9 @@ def colorized(img_file):
         # Convert to grayscale
         colorModel.load_image(file_path)
 
-        #img = Image.open(file)
+        origin_path =  'static/images/origin.png'
+        shutil.move(file_path,origin_path)
+        
         # 이미지를 numpy 배열로 변환
         img = img.convert('RGB')
         img = img.resize((256, 256)) #이미지 사이즈 조절(입력사이즈 256,256)
@@ -137,8 +140,6 @@ def colorized(img_file):
                                 rep[1] += 13 
                                 rep[2] -= 30
             
-       
-
         # initialize with no user inputs
         input_ab = np.zeros((2,256,256))
         mask = np.zeros((1,256,256))
@@ -161,10 +162,10 @@ def colorized(img_file):
         img_path = 'image.png'
         filename = img_path
         result.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_url = url_for('static', filename='images/' + filename)
+        result_url = url_for('static', filename='images/' + filename)
 
-        os.remove(file_path) # 임시 파일 삭제
-        return image_url
+        
+        return origin_path, result_url
 
 # lab 컬러러 중중 ab 사용
 def put_point(input_ab,mask,loc,p,val):
