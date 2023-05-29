@@ -1,4 +1,4 @@
-from flask import  request, jsonify, url_for
+from flask import  request, jsonify, url_for, send_file
 from flask_restx import Resource, Namespace
 from data import colorize_image as CI
 from PIL import Image
@@ -28,13 +28,14 @@ class Colorize(Resource):
     def post(self):
         image = request.files['image']
         idx =  request.form['Intensity'] #인덱스 
-
-        origin , result = colorized(image)
-
-        return jsonify({'url': result, 'origin_url' : '/'+origin})
-    
-def colorized(img_file, ):
+ 
+        result = colorized(image,idx)
        
+        return jsonify({'url': result})
+    
+def colorized(img_file, intensity):
+        tens = [0,13,26,39] #0,1,2,3
+        
         #임시 파일 저장
         with NamedTemporaryFile(delete=False) as tmp:
             img_file.save(tmp.name)
@@ -46,9 +47,6 @@ def colorized(img_file, ):
         # Convert to grayscale
         colorModel.load_image(file_path)
 
-        origin_path =  'static/images/origin.png'
-        shutil.move(file_path,origin_path)
-        
         # 이미지를 numpy 배열로 변환
         img = img.convert('RGB')
         img = img.resize((256, 256)) #이미지 사이즈 조절(입력사이즈 256,256)
@@ -75,10 +73,24 @@ def colorized(img_file, ):
 
             compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
             rep_colors.append([centers[0][0],centers[0][1],centers[0][2]])
-            cell_row = cell_idx // (w // cell_w)  # 셀의 행 인덱스 계산
-            cell_col = cell_idx % (w // cell_w)  # 셀의 열 인덱스 계산
-            cell_position = (int(cell_row * cell_h ) , int(cell_col * cell_w)) # 셀의 위치 정보 저장
-            position.append(cell_position)
+
+
+            cluster_idx = np.argmin(np.linalg.norm(centers - rep_colors[-1], axis=1))
+            cluster_pixels = pixel_colors[labels.flatten() == cluster_idx]
+            #import pdb;pdb.set_trace();
+
+            closest_pixel = cluster_pixels[np.argmin(np.linalg.norm(cluster_pixels - rep_colors[-1], axis=1))]
+            closest_pixel_pos = np.where((pixel_colors == closest_pixel).all(axis=1))
+            x, y = (closest_pixel_pos[0][0]+1)//4,closest_pixel_pos[0][0]%4
+
+            cell_idx_x = cell_idx % grid_size
+            cell_idx_y = cell_idx // grid_size
+
+            pos_x = cell_idx_x * cell_w + y
+            pos_y = cell_idx_y * cell_h + x
+
+            position.append([pos_y,pos_x])
+        
         compare = list(set(map(tuple, compare_colors)))   
 
         #로그 출력
@@ -137,8 +149,8 @@ def colorized(img_file, ):
                     if c !=idx_max:
                         for com, rep in zip(compare_colors, rep_colors):
                             if col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2]:
-                                rep[1] += 13 
-                                rep[2] -= 30
+                                #rep[1] += 13 
+                                rep[2] -= tens[int(intensity)]
             
         # initialize with no user inputs
         input_ab = np.zeros((2,256,256))
@@ -165,7 +177,7 @@ def colorized(img_file, ):
         result_url = url_for('static', filename='images/' + filename)
 
         
-        return origin_path, result_url
+        return result_url
 
 # lab 컬러러 중중 ab 사용
 def put_point(input_ab,mask,loc,p,val):
