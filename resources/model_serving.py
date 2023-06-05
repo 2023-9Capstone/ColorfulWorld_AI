@@ -29,9 +29,10 @@ class Colorize(Resource):
         image = request.files['image']
         idx =  request.form['Intensity'] #인덱스 
  
-        result = colorized(image,idx)
-       
-        return jsonify({'url': result})
+        result, code = colorized(image,idx)
+        return jsonify({'url': result}) #
+        #return jsonify({'url': result, 'error' : code}) #code 0은 혼동선 없음, 1은 있음
+
     
 def colorized(img_file, intensity):
         tens = [0,13,26,39] #0,1,2,3
@@ -71,7 +72,14 @@ def colorized(img_file, intensity):
             pixel_colors = cell.reshape((-1, 3)).astype(np.float32)
             _, labels, centers = cv2.kmeans(pixel_colors, num_colors, None, criteria, 10, flags)
 
-            compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
+            if centers[0][1]<0 and centers[0][2]<0 :
+                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13-1)])
+            elif centers[0][1]>=0 and centers[0][2]<0 :
+                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13-1)])
+            elif centers[0][1]<0 and centers[0][2]>=0:
+                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13)])
+            else :
+                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
             rep_colors.append([centers[0][0],centers[0][1],centers[0][2]])
 
 
@@ -120,6 +128,8 @@ def colorized(img_file, intensity):
             else:
                 print("No rows found.")
         
+        #혼동선 있는지 없는지 확인
+        have_line = 0
         #혼동선 라인
         exist_db = list(set(exist_db))
         # print(exist_db)
@@ -138,46 +148,56 @@ def colorized(img_file, intensity):
                 for com, rep in zip(compare_colors, rep_colors):
                     if col[0] == com[0] and col[1]==com[1] and col[2]==com[2]:
                         count += 1
-                if count > 0 :
+                if count > 10 :
                     cnt.append(count)
                     line.append([col[0], col[1], col[2]])
-            print(line)
-            print(cnt)
             if len(cnt)>=2:
+                print(line)
+                print(cnt)
                 idx_max = max(cnt)
+                idx_m = cnt.index(idx_max)
+                print(idx_m)
                 for col_li, c in zip(line,cnt) :
                     if c !=idx_max:
                         for com, rep in zip(compare_colors, rep_colors):
-                            if col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2]:
-                                #rep[1] += 13 
+                            if (col_li[0] <= com[0]+1 and  col_li[0] >= com[0]-1 )and col_li[1]==com[1] and col_li[2]==com[2] and(line[idx_m][1]*com[1]<=0 or line[idx_m][2]*com[2]<=0) :
+                                #rep[0] -= 10
+                                have_line += 1
+                                rep[1] += 13
                                 rep[2] -= tens[int(intensity)]
+        
+        if have_line > 0 :
+            # initialize with no user inputs
+            input_ab = np.zeros((2,256,256))
+            mask = np.zeros((1,256,256))
+
+            # Colorize image with hints
+            for col, pos in zip(rep_colors, position):
+                (input_ab,mask) = put_point(input_ab,mask,pos,1,col[1:])
+
+            # call forward
+            img_out = colorModel.net_forward(input_ab,mask)
+
+            # get mask, input image, and result in full resolution
+            mask_fullres = colorModel.get_img_mask_fullres() # get input mask in full res
+            img_in_fullres = colorModel.get_input_img_fullres() # get input image in full res
+            img_out_fullres = colorModel.get_img_fullres() # get image at full resolution
             
-        # initialize with no user inputs
-        input_ab = np.zeros((2,256,256))
-        mask = np.zeros((1,256,256))
 
-        # Colorize image with hints
-        for col, pos in zip(rep_colors, position):
-            (input_ab,mask) = put_point(input_ab,mask,pos,1,col[1:])
+            # Return colorized image as response -> 이미지 파일 저장 및 이미지 url 제작
+            result = Image.fromarray(img_out_fullres)
+            img_path = 'image.png'
+            filename = img_path
+            result.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            result_url = url_for('static', filename='images/' + filename)
 
-        # call forward
-        img_out = colorModel.net_forward(input_ab,mask)
-
-        # get mask, input image, and result in full resolution
-        mask_fullres = colorModel.get_img_mask_fullres() # get input mask in full res
-        img_in_fullres = colorModel.get_input_img_fullres() # get input image in full res
-        img_out_fullres = colorModel.get_img_fullres() # get image at full resolution
+            
+            return result_url, 1
         
-
-        # Return colorized image as response -> 이미지 파일 저장 및 이미지 url 제작
-        result = Image.fromarray(img_out_fullres)
-        img_path = 'image.png'
-        filename = img_path
-        result.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        result_url = url_for('static', filename='images/' + filename)
+        else :    
+            return 'nothing' , 0
 
         
-        return result_url
 
 # lab 컬러러 중중 ab 사용
 def put_point(input_ab,mask,loc,p,val):
