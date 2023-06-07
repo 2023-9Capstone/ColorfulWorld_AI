@@ -11,6 +11,7 @@ from flask import current_app as app
 import pymysql
 import logging
 import shutil
+import pickle
 
 api = Namespace(
     name="model_serving",
@@ -35,7 +36,7 @@ class Colorize(Resource):
 
     
 def colorized(img_file, intensity):
-        tens = [0,13,26,39] #0,1,2,3
+        tens = [13,26,39,13,26,39,13,26,39] #0,1,2,3
         
         #임시 파일 저장
         with NamedTemporaryFile(delete=False) as tmp:
@@ -72,14 +73,14 @@ def colorized(img_file, intensity):
             pixel_colors = cell.reshape((-1, 3)).astype(np.float32)
             _, labels, centers = cv2.kmeans(pixel_colors, num_colors, None, criteria, 10, flags)
 
-            if centers[0][1]<0 and centers[0][2]<0 :
-                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13-1)])
-            elif centers[0][1]>=0 and centers[0][2]<0 :
-                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13-1)])
-            elif centers[0][1]<0 and centers[0][2]>=0:
-                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13)])
-            else :
-                compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
+            # if centers[0][1]<0 and centers[0][2]<0 :
+            #     compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13-1)])
+            # elif centers[0][1]>=0 and centers[0][2]<0 :
+            #     compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13-1)])
+            # elif centers[0][1]<0 and centers[0][2]>=0:
+            #     compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13-1),int(centers[0][2]/13)])
+            # else :
+            compare_colors.append([int(centers[0][0]/5),int(centers[0][1]/13),int(centers[0][2]/13)])
             rep_colors.append([centers[0][0],centers[0][1],centers[0][2]])
 
 
@@ -101,72 +102,76 @@ def colorized(img_file, intensity):
         
         compare = list(set(map(tuple, compare_colors)))   
 
-        #로그 출력
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
-        #쿼리 연결    
-        connection = pymysql.connect(
-            host=app.config['MYSQL_HOST'],
-            port=app.config['MYSQL_PORT'],
-            user=app.config['MYSQL_USER'],
-            password=app.config['MYSQL_PASSWORD'],
-            db=app.config['MYSQL_DB']
-        )
-        
-        # 쿼리 실행
-        cursor = connection.cursor()
+        import pickle
+        import pprint
 
-        exist_db = []
-        for com in compare:
-            L, a, b = com[0], com[1], com[2]
-            sql_com = 'SELECT Type FROM COLORBLIND.protanopin WHERE L = ' + str(L) + ' and a = '+ str(a) + ' and b =' + str(b)
-            cursor.execute(sql_com)
-            result = cursor.fetchall()
-            if len(result) > 0:
-                #이때 그 혼동색 라인에 있는 색을 찾는게 좋을듯...!!! 그 함수를 만들어 보자
-                exist_db.append(result[0][0])
-            else:
-                print("No rows found.")
+        if int(intensity)<=2 :
+            with open('data/CVD_P_change_13.pkl', 'rb') as file:
+                loaded_list = pickle.load(file)
+        elif int(intensity)<=5 :
+            with open('data/CVD_D_change_13.pkl', 'rb') as file:
+                loaded_list = pickle.load(file)
+        elif int(intensity)<=8 :
+            with open('data/CVD_T_change_13.pkl', 'rb') as file:
+                loaded_list = pickle.load(file)
+
+
+        cnt = 0
+        line = []
+        color_line=[]
+        for idx_i, cvd in enumerate(loaded_list):
+            for com in compare:
+                color_line=[]
+                if cvd[0][0]==com[0] and  cvd[0][1]==com[1] and cvd[0][2]==com[2]:
+                    for cvv in cvd:
+                        for cm in compare:
+                            if cvv[1] == 0 and cvv[2] == 0 :
+                                print("")
+                            elif cvv[0]==cm[0] and  cvv[1]==cm[1] and cvv[2]==cm[2]:
+                                color_line.append([cm[0],cm[1],cm[2]])
+                           
+                                compare.remove(cm)
         
-        #혼동선 있는지 없는지 확인
-        have_line = 0
-        #혼동선 라인
-        exist_db = list(set(exist_db))
-        # print(exist_db)
-        for db in exist_db:
-            color_line = []
-            sql_com = 'SELECT L,a,b FROM COLORBLIND.protanopin WHERE Type = \'' + db + '\''
-            cursor.execute(sql_com)
-            result = cursor.fetchall()
-            if len(result) > 2:
-                for r in result:
-                    color_line.append(r)
-            cnt = []
-            line = []
-            for col in color_line:
+            if len(color_line)>=2 :
+                line.append(color_line)
+                cnt += len(color_line)
+                color_line = []
+       
+
+        for line_confuse in line :
+            confuse = []
+            ccc = []
+            print(line_confuse)
+            for col in line_confuse:
                 count = 0
                 for com, rep in zip(compare_colors, rep_colors):
                     if col[0] == com[0] and col[1]==com[1] and col[2]==com[2]:
                         count += 1
-                if count > 10 :
-                    cnt.append(count)
-                    line.append([col[0], col[1], col[2]])
-            if len(cnt)>=2:
-                print(line)
-                print(cnt)
-                idx_max = max(cnt)
-                idx_m = cnt.index(idx_max)
+                if count > 5 :
+                    ccc.append(count)
+                    confuse.append([col[0], col[1], col[2]])
+            if len(ccc)>=2:
+                print(confuse)
+                print(ccc)
+                idx_max = max(ccc)
+                idx_m = ccc.index(idx_max)
                 print(idx_m)
-                for col_li, c in zip(line,cnt) :
+                for col_li, c in zip(confuse, ccc) :
                     if c !=idx_max:
                         for com, rep in zip(compare_colors, rep_colors):
-                            if (col_li[0] <= com[0]+1 and  col_li[0] >= com[0]-1 )and col_li[1]==com[1] and col_li[2]==com[2] and(line[idx_m][1]*com[1]<=0 or line[idx_m][2]*com[2]<=0) :
-                                #rep[0] -= 10
-                                have_line += 1
-                                rep[1] += 13
-                                rep[2] -= tens[int(intensity)]
-        
-        if have_line > 0 :
+                            if com[1] == 0 and com[2] == 0 :
+                                a = 0
+                            elif col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2] :#and (confuse[idx_m][1]*com[1]<=0 or confuse[idx_m][2]*com[2]<=0 )  :
+                                if confuse[idx_m][1]>0:
+                                    rep[1] -= tens[int(intensity)]
+                                else :
+                                    rep[1] += tens[int(intensity)]
+                                if confuse[idx_m][2]>0:
+                                    rep[2] -= tens[int(intensity)]
+                                else :
+                                    rep[2] += tens[int(intensity)]
+        have_line = 0
+        if have_line >=0 :
             # initialize with no user inputs
             input_ab = np.zeros((2,256,256))
             mask = np.zeros((1,256,256))
@@ -186,7 +191,7 @@ def colorized(img_file, intensity):
 
             # Return colorized image as response -> 이미지 파일 저장 및 이미지 url 제작
             result = Image.fromarray(img_out_fullres)
-            img_path = 'image.png'
+            img_path = 'image.png'  
             filename = img_path
             result.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             result_url = url_for('static', filename='images/' + filename)
