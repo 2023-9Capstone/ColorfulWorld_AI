@@ -56,6 +56,7 @@ def colorized(img_file, intensity):
         # RGB 색상 공간을 Lab 색상 공간으로 변환
         img = color.rgb2lab(img_array)
 
+        #grid_size = 128
         grid_size = 128
         h, w = img.shape[:2]
         cell_h, cell_w = int(h/grid_size), int(w/grid_size)
@@ -106,7 +107,7 @@ def colorized(img_file, intensity):
         import pprint
 
         if int(intensity)<=2 :
-            with open('data/CVD_P_change_13.pkl', 'rb') as file:
+            with open('data/CVD_P_change_13_0609.pkl', 'rb') as file:
                 loaded_list = pickle.load(file)
         elif int(intensity)<=5 :
             with open('data/CVD_D_change_13.pkl', 'rb') as file:
@@ -125,11 +126,8 @@ def colorized(img_file, intensity):
                 if cvd[0][0]==com[0] and  cvd[0][1]==com[1] and cvd[0][2]==com[2]:
                     for cvv in cvd:
                         for cm in compare:
-                            if cvv[1] == 0 and cvv[2] == 0 :
-                                print("")
-                            elif cvv[0]==cm[0] and  cvv[1]==cm[1] and cvv[2]==cm[2]:
+                            if cvv[0]==cm[0] and  cvv[1]==cm[1] and cvv[2]==cm[2]:
                                 color_line.append([cm[0],cm[1],cm[2]])
-                           
                                 compare.remove(cm)
         
             if len(color_line)>=2 :
@@ -147,7 +145,7 @@ def colorized(img_file, intensity):
                 for com, rep in zip(compare_colors, rep_colors):
                     if col[0] == com[0] and col[1]==com[1] and col[2]==com[2]:
                         count += 1
-                if count > 5 :
+                if count > 0 :
                     ccc.append(count)
                     confuse.append([col[0], col[1], col[2]])
             if len(ccc)>=2:
@@ -161,7 +159,8 @@ def colorized(img_file, intensity):
                         for com, rep in zip(compare_colors, rep_colors):
                             if com[1] == 0 and com[2] == 0 :
                                 a = 0
-                            elif col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2] :#and (confuse[idx_m][1]*com[1]<=0 or confuse[idx_m][2]*com[2]<=0 )  :
+                            elif col_li[0] == com[0] and col_li[1]==com[1] and col_li[2]==com[2] and (confuse[idx_m][1]*com[1]<=0 or confuse[idx_m][2]*com[2]<=0 )  :
+                                #rep[0] -= 10
                                 if confuse[idx_m][1]>0:
                                     rep[1] -= tens[int(intensity)]
                                 else :
